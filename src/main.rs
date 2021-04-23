@@ -10,7 +10,6 @@ struct Cell {
 #[derive(Clone, Debug, Hash, Copy)]
 struct Node {
     cell: Cell,
-    pos: (usize, usize),
     parent: Option<(usize, usize)>,
     distance: u32
 }
@@ -39,21 +38,25 @@ use image::{GrayImage, Rgb};
 use std::cmp::Ordering;
 use priority_queue::PriorityQueue;
 
-fn get_cell(img: &GrayImage, x: u32, y: u32) -> Cell {
-    let imgx = 1 + x * 16;
-    let imgy = 1 + y * 16;
+fn get_cell(img: &GrayImage, x: u32, y: u32) -> Option<Cell> {
+    let imgx = 2 + x;
+    let imgy = 2 + y;
 
-    let top = img.get_pixel(imgx + 1, imgy).0[0] < 150;
-    let bottom = img.get_pixel(imgx + 1, imgy + 15).0[0] < 150;
-    let left = img.get_pixel(imgx, imgy + 1).0[0] < 150;
-    let right = img.get_pixel(imgx + 15, imgy + 1).0[0] < 150;
+    if img.get_pixel(imgx, imgy).0[0] < 150 {
+        return None;
+    }
 
-    Cell {
+    let top = img.get_pixel(imgx, imgy - 1).0[0] < 150;
+    let bottom = img.get_pixel(imgx, imgy + 1).0[0] < 150;
+    let left = img.get_pixel(imgx - 1, imgy).0[0] < 150;
+    let right = img.get_pixel(imgx + 1, imgy).0[0] < 150;
+
+    Some(Cell {
         top_wall: top,
         bottom_wall: bottom,
         left_wall: left,
         right_wall: right
-    }
+    })
 }
 
 fn manhattan(pos1: (usize, usize), pos2: (usize, usize)) -> u32 {
@@ -62,32 +65,27 @@ fn manhattan(pos1: (usize, usize), pos2: (usize, usize)) -> u32 {
 
 fn main() {
     // Load the image from disk
-    let img = ImageReader::open("input2.png").unwrap().decode().unwrap().into_luma8();
+    let img = ImageReader::open("500.png").unwrap().decode().unwrap().into_luma8();
 
     // Get the image size
     println!("w: {}, h: {}", img.width(), img.height());
 
     // Get the cell count
-    let num_cells_h = ((img.width() - 2) / 16) as usize;
-    let num_cells_v = ((img.height() - 2) / 16) as usize;
+    let num_cells_h = (img.width() - 4) as usize;
+    let num_cells_v = (img.height() - 4) as usize;
     println!("cell count x: {}, y: {}", num_cells_h, num_cells_v);
 
     // Build the cells from the image
-    let mut maze_nodes = Array2D::filled_with(Node {
-        cell: Cell {
-            top_wall: false,
-            bottom_wall: false,
-            left_wall: false,
-            right_wall: false
-        },
-        pos: (0, 0),
-        parent: None,
-        distance: 0
-    }, num_cells_h, num_cells_v);
+    let mut maze_nodes = Array2D::filled_with(Option::<Node>::None, num_cells_h, num_cells_v);
     for y in 0..num_cells_v as u32 {
         for x in 0..num_cells_h as u32 {
-            maze_nodes[(x as usize, y as usize)].cell = get_cell(&img, x, y);
-            maze_nodes[(x as usize, y as usize)].pos = (x as usize, y as usize)
+            if let Some(cell) = get_cell(&img, x, y) {
+                maze_nodes[(x as usize, y as usize)] = Some(Node{
+                    distance: 0,
+                    parent: None,
+                    cell
+                })
+            }
         }
     }
 
@@ -98,11 +96,11 @@ fn main() {
 
     // Start A*
     let start_pos = (
-        ((img.width() - 2) / 2 / 16) as usize,
+        0 as usize,
         0 as usize
     );
     let end_pos = (
-        ((img.width() - 2) / 2 / 16) as usize,
+        (num_cells_h - 1) as usize,
         (num_cells_v - 1) as usize
     );
 
@@ -118,7 +116,7 @@ fn main() {
 
     while pq.len() > 0 {
         let cur_pos = pq.pop().unwrap().0;
-        let cur = maze_nodes[cur_pos];
+        let cur = &maze_nodes[cur_pos].unwrap();
 
         if cur_pos == end_pos {
             println!("Found path!");
@@ -128,87 +126,92 @@ fn main() {
         visited.push(cur_pos);
 
         if !cur.cell.left_wall && cur_pos.0 > 0 {
-            let left_pos = (cur_pos.0 - 1, cur_pos.1);
-            let manhattan = manhattan(left_pos, end_pos);
+            let neighbor_pos = (cur_pos.0 - 1, cur_pos.1);
+            let manhattan = manhattan(neighbor_pos, end_pos);
 
-            if !visited.contains(&left_pos) {
-                pq.push(left_pos, std::cmp::Reverse(manhattan));
+            if !visited.contains(&neighbor_pos) {
+                pq.push(neighbor_pos, std::cmp::Reverse(manhattan));
 
-                maze_nodes[left_pos].distance = cur.distance + 1;
-                maze_nodes[left_pos].parent = Some(cur_pos);
+                let mut test_node = maze_nodes[neighbor_pos].unwrap();
+                test_node.distance = cur.distance + 1;
+                test_node.parent = Some(cur_pos);
+
+                maze_nodes[neighbor_pos] = Some(test_node);
             }
         }
 
         if !cur.cell.right_wall && cur_pos.0 < (num_cells_h - 1) {
-            let right_pos = (cur_pos.0 + 1, cur_pos.1);
-            let manhattan = manhattan(right_pos, end_pos);
+            let neighbor_pos = (cur_pos.0 + 1, cur_pos.1);
+            let manhattan = manhattan(neighbor_pos, end_pos);
 
-            if !visited.contains(&right_pos) {
-                pq.push(right_pos, std::cmp::Reverse(manhattan));
+            if !visited.contains(&neighbor_pos) {
+                pq.push(neighbor_pos, std::cmp::Reverse(manhattan));
 
-                maze_nodes[right_pos].distance = cur.distance + 1;
-                maze_nodes[right_pos].parent = Some(cur_pos);
+                let mut test_node = maze_nodes[neighbor_pos].unwrap();
+                test_node.distance = cur.distance + 1;
+                test_node.parent = Some(cur_pos);
+
+                maze_nodes[neighbor_pos] = Some(test_node);
             }
         }
 
         if !cur.cell.bottom_wall && cur_pos.1 < (num_cells_v - 1) {
-            let bottom_pos = (cur_pos.0, cur_pos.1 + 1);
-            let manhattan = manhattan(bottom_pos, end_pos);
+            let neighbor_pos = (cur_pos.0, cur_pos.1 + 1);
+            let manhattan = manhattan(neighbor_pos, end_pos);
 
-            if !visited.contains(&bottom_pos) {
-                pq.push(bottom_pos, std::cmp::Reverse(manhattan));
+            if !visited.contains(&neighbor_pos) {
+                pq.push(neighbor_pos, std::cmp::Reverse(manhattan));
 
-                maze_nodes[bottom_pos].distance = cur.distance + 1;
-                maze_nodes[bottom_pos].parent = Some(cur_pos);
+                let mut test_node = maze_nodes[neighbor_pos].unwrap();
+                test_node.distance = cur.distance + 1;
+                test_node.parent = Some(cur_pos);
+
+                maze_nodes[neighbor_pos] = Some(test_node);
             }
         }
 
         if !cur.cell.top_wall && cur_pos.1 > 0 {
-            let top_pos = (cur_pos.0, cur_pos.1 - 1);
-            let manhattan = manhattan(top_pos, end_pos);
+            let neighbor_pos = (cur_pos.0, cur_pos.1 - 1);
+            let manhattan = manhattan(neighbor_pos, end_pos);
 
-            if !visited.contains(&top_pos) {
-                pq.push(top_pos, std::cmp::Reverse(manhattan));
+            if !visited.contains(&neighbor_pos) {
+                pq.push(neighbor_pos, std::cmp::Reverse(manhattan));
 
-                maze_nodes[top_pos].distance = cur.distance + 1;
-                maze_nodes[top_pos].parent = Some(cur_pos);
+                let mut test_node = maze_nodes[neighbor_pos].unwrap();
+                test_node.distance = cur.distance + 1;
+                test_node.parent = Some(cur_pos);
+
+                maze_nodes[neighbor_pos] = Some(test_node);
             }
         }
     }
 
-    let mut cur = Some(end_pos);
-    let mut path = Vec::new();
-    while cur.is_some() {
-        path.push(cur.unwrap());
-        let curnode = maze_nodes[cur.unwrap()];
-        cur = curnode.parent;
+    let mut cur =  maze_nodes[end_pos];
+    let mut path: Vec<(usize, usize)> = Vec::new();
+    while let Some(cur_node) = cur {
+        if cur_node.parent.is_none() {
+            break;
+        }
+
+        path.push(cur_node.parent.unwrap());
+        cur = maze_nodes[cur_node.parent.unwrap()];
     }
 
-    path.push(start_pos);
     path.reverse();
-    println!("{:?}", path);
 
     // Load the image from disk
-    let mut testImg = ImageReader::open("input2.png").unwrap().decode().unwrap().into_rgb();
+    let mut testImg = ImageReader::open("500.png").unwrap().decode().unwrap().into_rgb();
     for node in visited {
-        let imgx = 4 + (node.0 * 16);
-        let imgy = 4 + (node.1 * 16);
+        let imgx = 2 + node.0;
+        let imgy = 2 + node.1;
 
-        for x in imgx..imgx+10 {
-            for y in imgy..imgy+10 {
-                testImg.put_pixel(x as u32, y as u32, Rgb([255, 0, 0]))
-            }
-        }
+        testImg.put_pixel(imgx as u32, imgy as u32, Rgb([255, 0, 0]))
     }
     for node in path {
-        let imgx = 4 + (node.0 * 16);
-        let imgy = 4 + (node.1 * 16);
+        let imgx = 2 + node.0;
+        let imgy = 2 + node.1;
 
-        for x in imgx..imgx+10 {
-            for y in imgy..imgy+10 {
-                testImg.put_pixel(x as u32, y as u32, Rgb([0, 255, 0]))
-            }
-        }
+        testImg.put_pixel(imgx as u32, imgy as u32, Rgb([0, 255, 0]))
     }
-    testImg.save("out2.png").unwrap();
+    testImg.save("out.png").unwrap();
 }
