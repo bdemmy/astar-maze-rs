@@ -4,69 +4,52 @@ struct Cell {
     top_wall: bool,
     bottom_wall: bool,
     left_wall: bool,
-    right_wall: bool
-}
-
-#[derive(Clone, Debug, Hash, Copy)]
-struct Node {
-    cell: Cell,
-    parent: Option<(usize, usize)>,
-    distance: u32,
+    right_wall: bool,
     position: (usize, usize)
 }
-impl Node {
+impl Cell {
     fn get_neighbor_positions(&self) -> Vec<(usize, usize)> {
         let mut neighbors = Vec::new();
 
         // Left wall
-        if !self.cell.left_wall {
+        if !self.left_wall {
             neighbors.push((self.position.0 - 1, self.position.1))
         }
 
-        if !self.cell.right_wall {
+        if !self.right_wall {
             neighbors.push((self.position.0 + 1, self.position.1))
         }
 
-        if !self.cell.top_wall {
+        if !self.top_wall {
             neighbors.push((self.position.0, self.position.1 - 1))
         }
 
-        if !self.cell.bottom_wall {
+        if !self.bottom_wall {
             neighbors.push((self.position.0, self.position.1 + 1))
         }
 
         neighbors
     }
 }
-// Implement ordering/equality
-impl Eq for Node {}
-impl Ord for Node {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.distance.cmp(&other.distance)
-    }
-}
-impl PartialEq for Node {
-    fn eq(&self, other: &Self) -> bool {
-        self.distance == other.distance
-    }
-}
-impl PartialOrd for Node {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+
+#[derive(Debug, Copy, Clone, Hash)]
+struct Node {
+    parent: Option<(usize, usize)>,
+    cost: usize,
+    cell: Cell
 }
 
 use image::io::Reader as ImageReader;
 use array2d::Array2D;
 use image::{GrayImage, Rgb};
 use std::cmp::Ordering;
-use std::collections::{hash_set, HashSet};
+use std::collections::{hash_set, HashSet, HashMap};
 use priority_queue::PriorityQueue;
 use std::time::Instant;
 
-fn get_cell(img: &GrayImage, x: u32, y: u32) -> Option<Cell> {
-    let imgx = 2 + x;
-    let imgy = 2 + y;
+fn get_cell(img: &GrayImage, x: usize, y: usize) -> Option<Cell> {
+    let imgx = 2 + x as u32;
+    let imgy = 2 + y as u32;
 
     if img.get_pixel(imgx, imgy).0[0] < 150 {
         return None;
@@ -81,7 +64,8 @@ fn get_cell(img: &GrayImage, x: u32, y: u32) -> Option<Cell> {
         top_wall: top,
         bottom_wall: bottom,
         left_wall: left,
-        right_wall: right
+        right_wall: right,
+        position: (x as usize, y as usize)
     })
 }
 fn manhattan(pos1: (usize, usize), pos2: (usize, usize)) -> u32 {
@@ -114,16 +98,15 @@ fn main() {
     println!("cell count x: {}, y: {}", num_cells_h, num_cells_v);
 
     // Build the cells from the image
-    let mut maze_nodes = Array2D::filled_with(Option::<Node>::None, num_cells_h, num_cells_v);
-    for y in 0..num_cells_v as u32 {
-        for x in 0..num_cells_h as u32 {
+    let mut maze_nodes = HashMap::new();
+    for y in 0..num_cells_v {
+        for x in 0..num_cells_h {
             if let Some(cell) = get_cell(&source_img, x, y) {
-                maze_nodes[(x as usize, y as usize)] = Some(Node{
-                    distance: 0,
+                maze_nodes.insert((x, y), Node {
                     parent: None,
-                    cell,
-                    position: (x as usize, y as usize)
-                })
+                    cost: 0,
+                    cell
+                });
             }
         }
     }
@@ -134,10 +117,10 @@ fn main() {
     let start_pos = (0usize, 0usize);
     let end_pos = (num_cells_h - 1, num_cells_v - 1);
 
-    let mut visited: HashSet<(usize, usize)> = HashSet::with_capacity(num_cells_h * num_cells_v / 2);
-    let mut pq: PriorityQueue<(usize, usize), std::cmp::Reverse<u32>> = PriorityQueue::new();
+    let mut closed_list: HashSet<(usize, usize)> = HashSet::with_capacity(num_cells_h * num_cells_v / 2);
+    let mut open_list: PriorityQueue<(usize, usize), std::cmp::Reverse<usize>> = PriorityQueue::new();
 
-    pq.push(
+    open_list.push(
         start_pos,
         std::cmp::Reverse(0)
     );
@@ -146,34 +129,34 @@ fn main() {
     let maxcount = 1000000;
 
     let mut output_image = ImageReader::open(&input_path).unwrap().decode().unwrap().into_rgb8();
-    while pq.len() > 0 {
-        let cur_pos = pq.pop().unwrap().0;
-        let cur:&Node = &maze_nodes[cur_pos].unwrap();
+    while open_list.len() > 0 {
+        let cur_pos = open_list.pop().unwrap().0;
+        let cur = *maze_nodes.get(&cur_pos).unwrap();
 
         if cur_pos == end_pos {
             println!("Found path!");
             break;
         }
 
-        visited.insert(cur_pos);
+        closed_list.insert(cur_pos);
 
-        for neighbor_pos in cur.get_neighbor_positions() {
-            let manhattan = manhattan(neighbor_pos, end_pos);
+        for neighbor_pos in cur.cell.get_neighbor_positions() {
+            if !closed_list.contains(&neighbor_pos) {
+                let manhattan = manhattan(neighbor_pos, end_pos);
+                let cost = std::cmp::min((cur.cost + 1) as usize, manhattan as usize);
 
-            if !visited.contains(&neighbor_pos) {
-                pq.push(neighbor_pos, std::cmp::Reverse(std::cmp::min(cur.distance + 1, manhattan)));
+                open_list.push(neighbor_pos, std::cmp::Reverse(cost));
 
-                let mut updated_node = maze_nodes[neighbor_pos].unwrap();
-                updated_node.distance = cur.distance + 1;
-                updated_node.parent = Some(cur_pos);
-                maze_nodes[neighbor_pos] = Some(updated_node);
+                let node = maze_nodes.get_mut(&neighbor_pos).unwrap();
+                node.cost = cur.cost + 1;
+                node.parent = Some(cur_pos);
             }
         }
 
         count = (count + 1) % maxcount;
 
         if count == maxcount - 1 {
-            for node in &visited {
+            for node in &closed_list {
                 let imgx = 2 + node.0;
                 let imgy = 2 + node.1;
 
@@ -184,15 +167,13 @@ fn main() {
         }
     }
 
-    let mut cur =  maze_nodes[end_pos];
+    let mut cur =  maze_nodes.get(&end_pos);
     let mut path: Vec<(usize, usize)> = Vec::new();
     while let Some(cur_node) = cur {
-        if cur_node.parent.is_none() {
-            break;
-        }
-
-        path.push(cur_node.parent.unwrap());
-        cur = maze_nodes[cur_node.parent.unwrap()];
+        if let Some(parent_pos) = cur_node.parent {
+            path.push(parent_pos);
+            cur = maze_nodes.get(&parent_pos)
+        } else { break };
     }
 
     path.reverse();
