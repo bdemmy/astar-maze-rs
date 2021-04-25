@@ -1,0 +1,12 @@
+[package]
+name = "djikstra-maze"
+version = "0.1.0"
+authors = ["bdemmy <46735112+bdemmy@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+image = "0.23.14"
+array2d = "0.2.1"
+priority-queue = "1.1.1"
