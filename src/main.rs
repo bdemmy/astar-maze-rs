@@ -32,11 +32,13 @@ impl Node {
 }
 
 use image::io::Reader as ImageReader;
-use image::{GrayImage, Rgb};
+use image::{GrayImage, Rgb, RgbImage};
 use std::collections::{HashSet, HashMap};
 use priority_queue::PriorityQueue;
 use std::time::Instant;
 use crate::MazeBlock::{Open, Wall, Empty};
+use itertools::Itertools;
+use std::cmp::{max, min};
 
 #[derive(Eq, PartialEq)]
 enum MazeBlock {
@@ -202,6 +204,62 @@ fn get_input_path() -> String {
     input_path
 }
 
+fn find_start_pos(maze: &HashMap<(usize, usize), Node>, width: usize, height: usize) -> Option<(usize, usize)> {
+    // Attempt to find the position where there is only one node in a row
+    // More of a dynamic approach to finding an entrance where it may not be the highest row
+    // If it can not find one then it will find the top left corner as the start node
+
+    for y in 0..height {
+        for x in 0..width {
+            if let Some(node) = maze.get(&(x, y)) {
+                // Found the first node
+                return Some((x, y));
+            }
+        }
+    }
+
+    // Did not find a value
+    // Should never happen as long as there is at least one node in the maze
+    None
+}
+
+fn find_end_pos(maze: &HashMap<(usize, usize), Node>, width: usize, height: usize) -> Option<(usize, usize)> {
+    // Attempt to find the position where there is only one node in a row
+    // More of a dynamic approach to finding an entrance where it may not be the highest row
+    // If it can not find one then it will find the top left corner as the start node
+
+    for y in (0..height).rev() {
+        for x in (0..width).rev() {
+            if let Some(node) = maze.get(&(x, y)) {
+                // Found the first node
+                return Some((x, y));
+            }
+        }
+    }
+
+    // Did not find a value
+    // Should never happen as long as there is at least one node in the maze
+    None
+}
+
+fn draw_line_between_nodes(img: &mut RgbImage, node: &(usize, usize), next: &(usize, usize), r: u8, g: u8, b: u8) {
+    // Draw horizontal
+    if node.1 == next.1 {
+        let (start, end) = (min(node.0, next.0), max(node.0, next.0));
+        for i in start..=end {
+            img.put_pixel(i as u32, node.1 as u32, Rgb([r,g,b]));
+        }
+    }
+
+    // Draw vertical
+    if node.0 == next.0 {
+        let (start, end) = (min(node.1, next.1), max(node.1, next.1));
+        for i in start..=end {
+            img.put_pixel(node.0 as u32, i as u32, Rgb([r,g,b]));
+        }
+    }
+}
+
 fn main() {
     // Get the input path
     let input_path = get_input_path();
@@ -222,8 +280,8 @@ fn main() {
     // Start A*
     let start = Instant::now();
 
-    let start_pos = (1usize, 1usize);
-    let end_pos = (num_cells_h - 2, num_cells_v - 2);
+    let start_pos = find_start_pos(&maze_nodes, num_cells_h, num_cells_v).unwrap();
+    let end_pos = find_end_pos(&maze_nodes, num_cells_h, num_cells_v).unwrap();
 
     let mut closed_list: HashSet<(usize, usize)> = HashSet::with_capacity(num_cells_h * num_cells_v / 2);
     let mut open_list: PriorityQueue<(usize, usize), std::cmp::Reverse<usize>> = PriorityQueue::new();
@@ -274,6 +332,19 @@ fn main() {
 
     path.reverse();
 
+    let mut output_image = ImageReader::open(&input_path).unwrap().decode().unwrap().into_rgb8();
+
+    for node in &closed_list {
+        if let Some(parent) = parent_map.get(&node) {
+            draw_line_between_nodes(&mut output_image, &node, parent, 255, 0, 0);
+        }
+    }
+
+    for (node, next) in path.iter().tuple_windows() {
+        draw_line_between_nodes(&mut output_image, node, next, 0, 255, 0);
+    }
+
+
     // Load the image from disk
     /*for (idx, node) in path.iter().enumerate() {
         if let Some(next) = path.get(idx + 1) {
@@ -292,16 +363,6 @@ fn main() {
             }
         }
     }*/
-
-    let mut output_image = ImageReader::open(&input_path).unwrap().decode().unwrap().into_rgb8();
-
-    for node in &closed_list {
-        output_image.put_pixel(node.0 as u32, node.1 as u32, Rgb([255, 0, 0]))
-    }
-
-    for node in &path {
-        output_image.put_pixel(node.0 as u32, node.1 as u32, Rgb([0, 255, 0]));
-    }
 
     output_image.save("out_reverse_manhattan.png").unwrap();
 
