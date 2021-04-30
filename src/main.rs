@@ -7,28 +7,34 @@ struct Node {
 }
 
 impl Node {
-    fn get_neighbor_positions(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
+    fn get_neighbor_positions(&self, x: u16, y: u16) -> Vec<(u16, u16)> {
         let mut neighbors = Vec::new();
 
         // Left wall
         if self.left > 0 {
-            neighbors.push((x - self.left as usize, y))
+            neighbors.push((x - self.left as u16, y))
         }
 
         if self.right > 0 {
-            neighbors.push((x + self.right as usize, y))
+            neighbors.push((x + self.right as u16, y))
         }
 
         if self.top > 0 {
-            neighbors.push((x, y - self.top as usize))
+            neighbors.push((x, y - self.top as u16))
         }
 
         if self.bottom > 0 {
-            neighbors.push((x, y + self.bottom as usize))
+            neighbors.push((x, y + self.bottom as u16))
         }
 
         neighbors
     }
+}
+
+#[derive(Eq, PartialEq)]
+enum MazeBlock {
+    Wall,
+    Open,
 }
 
 use image::io::Reader as ImageReader;
@@ -36,37 +42,38 @@ use image::{GrayImage, Rgb, RgbImage};
 use std::collections::{HashSet, HashMap};
 use priority_queue::PriorityQueue;
 use std::time::Instant;
-use crate::MazeBlock::{Open, Wall, Empty};
+use crate::MazeBlock::{Open, Wall};
 use itertools::Itertools;
 use std::cmp::{max, min};
 
-#[derive(Eq, PartialEq)]
-enum MazeBlock {
-    Empty,
-    Wall,
-    Open,
-}
-
+// Get the state of a cell given a reference image and coordinates
 fn get_cell_from_image(img: &GrayImage, x: usize, y: usize) -> MazeBlock {
+    // Out of bounds
     if x >= img.width() as usize {
-        return MazeBlock::Empty;
+        return MazeBlock::Wall;
     }
 
+    // Out of bounds
     if y >= img.height() as usize {
-        return MazeBlock::Empty;
+        return MazeBlock::Wall;
     }
 
+    // Dark pixel - wall
     if img.get_pixel(x as u32, y as u32).0[0] < 150 {
         return MazeBlock::Wall;
     }
 
+    // If nothing else, the cell is white and pathable
     return MazeBlock::Open;
 }
 
+// Get the neighbor offsets from an image
+// Searches in each direction from given x,y until a position for a node is found
+// Returns the distance to that node in each direction
 fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8, u8) {
     // Get top neighbors
     let cell = get_cell_from_image(img, x, y);
-    if cell == Wall || cell == Empty {
+    if cell == Wall {
         return (0, 0, 0, 0);
     }
 
@@ -84,7 +91,7 @@ fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8,
         }
     }
 
-    // Check to the left
+    // Check to the right
     let mut right = 0u8;
     for offset in 1..=img.width() as usize - x {
         if get_cell_from_image(img, x + offset, y) == Wall {
@@ -128,66 +135,83 @@ fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8,
         }
     }
 
+    // Return the offsets that we found pointing to the neighbors
     (left, right, top, bottom)
 }
 
-fn generate_nodes_from_image(img: &GrayImage) -> HashMap<(usize, usize), Node> {
-    let num_cells_h = img.width() as usize;
-    let num_cells_v = img.height() as usize;
+// Generate a hashmap of positions and maze nodes given an image
+fn generate_nodes_from_image(img: &GrayImage) -> HashMap<(u16, u16), Node> {
+    let width = img.width() as usize;
+    let height = img.height() as usize;
 
+    // Map to place nodes into
     let mut map = HashMap::new();
 
+    // Set to mark what we have visited already
     let mut visited = HashSet::new();
+    // Stack that we will use to visit neighboring nodes
     let mut stack = Vec::new();
 
-    'outer: for y in 0..num_cells_v {
-        for x in 0..num_cells_h {
+    'outer: for y in 0..height {
+        for x in 0..width {
             // Find the first open cell
             if get_cell_from_image(img, x, y) == Open {
-                stack.push((x, y));
+                stack.push((x as u16, y as u16));
                 break 'outer;
             }
         }
     }
 
     while let Some((x, y)) = stack.pop() {
+        // Did we already visit this node?
         if visited.contains(&(x, y)) {
             continue;
         }
 
-        let (left, right, top, bottom) = get_neighbors_from_image(img, x, y);
+        // Get the neighbors using the image
+        let (left, right, top, bottom) = get_neighbors_from_image(img, x as usize, y as usize);
 
+        // Create the node using the neighbors
         let node = Node {
             left,
             right,
             top,
             bottom,
         };
+
+        // Insert current node into the map
         map.insert((x, y), node);
 
+        // Visit neighbor
         if left > 0 {
-            stack.push((x - left as usize, y));
+            stack.push((x - left as u16, y));
         }
 
+        // Visit neighbor
         if right > 0 {
-            stack.push((x + right as usize, y));
+            stack.push((x + right as u16, y));
         }
 
+        // Visit neighbor
         if top > 0 {
-            stack.push((x, y - top as usize));
+            stack.push((x, y - top as u16));
         }
 
+        // Visit neighbor
         if bottom > 0 {
-            stack.push((x, y + bottom as usize));
+            stack.push((x, y + bottom as u16));
         }
 
+        // Mark current node as visited
         visited.insert((x, y));
     }
 
+    // Our finished map
     map
 }
 
-fn manhattan(pos1: (usize, usize), pos2: (usize, usize)) -> u32 {
+// Calculate the manhattan distance between two positions
+fn manhattan(pos1: (u16, u16), pos2: (u16, u16)) -> u32 {
     ((pos1.0 as i32 - pos2.0 as i32).abs() + (pos1.1 as i32 - pos2.1 as i32).abs()) as u32
 }
 
@@ -196,6 +220,7 @@ fn get_input_path() -> String {
     let mut input_path = String::new();
     println!("Enter input file name: ");
     let _ = std::io::stdin().read_line(&mut input_path).unwrap();
+
     // Strip newline that wont go away with .trim()
     if input_path.ends_with("\n") {
         input_path.truncate(input_path.len() - 1);
@@ -204,45 +229,48 @@ fn get_input_path() -> String {
     input_path
 }
 
-fn find_start_pos(maze: &HashMap<(usize, usize), Node>, width: usize, height: usize) -> Option<(usize, usize)> {
-    // Attempt to find the position where there is only one node in a row
-    // More of a dynamic approach to finding an entrance where it may not be the highest row
-    // If it can not find one then it will find the top left corner as the start node
+// Attempt to find entrance/exit of the maze
+// Assumes entrance is highest node in image, and exit is lowest node in image
+// If not found, will return the top left and bottom right nodes
+fn find_exits(maze: &HashMap<(u16, u16), Node>, width: usize, height: usize)
+              -> (Option<(u16, u16)>, Option<(u16, u16)>) {
 
-    for y in 0..height {
-        for x in 0..width {
-            if let Some(node) = maze.get(&(x, y)) {
-                // Found the first node
-                return Some((x, y));
+    let mut start = None;
+    let mut end = None;
+
+    // Increment y position only after we checked every x position for the row
+    'outer: for y in 0..height as u16 {
+        for x in 0..width as u16 {
+            if let Some(_) = maze.get(&(x, y)) {
+                // If we haven't yet found a start node
+                if start.is_none() {
+                    start = Some((x,y));
+                }
+            }
+
+            // Flipped coordinates to check for end pos
+            let (bx, by) = (width as u16 - x, height as u16 - y);
+            // Check if we found an end node
+            if let Some(_) = maze.get(&(bx, by)) {
+                // If we haven't yet found an end node
+                if end.is_none() {
+                    end = Some((bx, by));
+                }
+            }
+
+            // If we found both values we can stop looping
+            if start.is_some() && end.is_some() {
+                break 'outer;
             }
         }
     }
 
-    // Did not find a value
-    // Should never happen as long as there is at least one node in the maze
-    None
+    (start, end)
 }
 
-fn find_end_pos(maze: &HashMap<(usize, usize), Node>, width: usize, height: usize) -> Option<(usize, usize)> {
-    // Attempt to find the position where there is only one node in a row
-    // More of a dynamic approach to finding an entrance where it may not be the highest row
-    // If it can not find one then it will find the top left corner as the start node
-
-    for y in (0..height).rev() {
-        for x in (0..width).rev() {
-            if let Some(node) = maze.get(&(x, y)) {
-                // Found the first node
-                return Some((x, y));
-            }
-        }
-    }
-
-    // Did not find a value
-    // Should never happen as long as there is at least one node in the maze
-    None
-}
-
-fn draw_line_between_nodes(img: &mut RgbImage, node: &(usize, usize), next: &(usize, usize), r: u8, g: u8, b: u8) {
+// Hacked up helper to draw a line on an image between two nodes
+// Assumes nodes are aligned on either the x axis or y axis
+fn draw_line_between_nodes(img: &mut RgbImage, node: &(u16, u16), next: &(u16, u16), r: u8, g: u8, b: u8) {
     // Draw horizontal
     if node.1 == next.1 {
         let (start, end) = (min(node.0, next.0), max(node.0, next.0));
@@ -277,35 +305,52 @@ fn main() {
     println!("node count: {}", maze_nodes.len());
     println!("ratio: {}", maze_nodes.len() as f32 / (num_cells_h * num_cells_v) as f32);
 
-    // Start A*
+    // Get the start and end pos, and unwrap (for now, TODO: this is unsafe)
+    let (s, e) = find_exits(&maze_nodes, num_cells_h, num_cells_v);
+    let (start_pos, end_pos) = (s.unwrap(), e.unwrap());
+    println!("start: {:?}, end: {:?}", start_pos, end_pos);
+
+    // Get the start time
     let start = Instant::now();
 
-    let start_pos = find_start_pos(&maze_nodes, num_cells_h, num_cells_v).unwrap();
-    let end_pos = find_end_pos(&maze_nodes, num_cells_h, num_cells_v).unwrap();
+    // Closed list: Hashset containing positions that we have visited
+    let mut closed_list: HashSet<(u16, u16)> = HashSet::with_capacity(num_cells_h * num_cells_v / 2);
+    // Open list: Priority Queue for our search, search higher priority nodes first
+    let mut open_list: PriorityQueue<(u16, u16), std::cmp::Reverse<usize>> = PriorityQueue::new();
+    // Cost map: Hashmap of nodes and their costs. This could be contained within the node struct
+    //           but that is not good for memory, as unvisited nodes do not have a cost
+    let mut cost_map: HashMap<(u16, u16), usize> = HashMap::new();
+    // Parent map: Hashmap of nodes and their parents.  Same situation as cost map, could be inside
+    //           node but that is expensive memory-wise.
+    let mut parent_map: HashMap<(u16, u16), (u16, u16)> = HashMap::new();
 
-    let mut closed_list: HashSet<(usize, usize)> = HashSet::with_capacity(num_cells_h * num_cells_v / 2);
-    let mut open_list: PriorityQueue<(usize, usize), std::cmp::Reverse<usize>> = PriorityQueue::new();
-    let mut cost_map: HashMap<(usize, usize), usize> = HashMap::new();
-    let mut parent_map: HashMap<(usize, usize), (usize, usize)> = HashMap::new();
-
+    // Start with our start position
     open_list.push(
         start_pos,
         std::cmp::Reverse(0),
     );
 
+    // Start A* search
     while open_list.len() > 0 {
+        // Get the current position from the top of the open list
+        // TODO: Unsafe
         let cur_pos = open_list.pop().unwrap().0;
 
+        // Get the current node and cost
+        // TODO: Unsafe
         let cur = *maze_nodes.get(&cur_pos).unwrap();
         let cur_cost = *cost_map.get(&cur_pos).unwrap_or(&0);
 
+        // Insert current node into visited list
+        closed_list.insert(cur_pos);
+
+        // Check if we found the path
         if cur_pos == end_pos {
             println!("Found path!");
             break;
         }
 
-        closed_list.insert(cur_pos);
-
+        // Update neighbors
         for neighbor_pos in cur.get_neighbor_positions(cur_pos.0, cur_pos.1) {
             if !closed_list.contains(&neighbor_pos) {
                 let manhattan = manhattan(neighbor_pos, end_pos);
@@ -321,7 +366,8 @@ fn main() {
 
     // Current stop and path vec
     let mut cur = parent_map.get(&end_pos);
-    let mut path: Vec<(usize, usize)> = Vec::new();
+    let mut path: Vec<(u16, u16)> = Vec::new();
+    path.push(end_pos);
 
     // While we can find a parent
     while let Some(cur_node) = cur {
@@ -330,43 +376,34 @@ fn main() {
         cur = parent_map.get(cur_node);
     }
 
+    // Reverse the path to be from start to finish
     path.reverse();
 
+    let duration = start.elapsed();
+    println!("Time elapsed in A* is: {:?}", duration);
+    println!("Path Length: {}", &path.len());
+    println!("Saving image...");
+
+    // Create image for writing
     let mut output_image = ImageReader::open(&input_path).unwrap().decode().unwrap().into_rgb8();
 
+    // Draw all of the generated maze nodes
+    for (pos, _) in maze_nodes {
+        output_image.put_pixel(pos.0 as u32, pos.1 as u32, Rgb([200,200,255]));
+    }
+
+    // Draw all of the visited points
     for node in &closed_list {
         if let Some(parent) = parent_map.get(&node) {
             draw_line_between_nodes(&mut output_image, &node, parent, 255, 0, 0);
         }
     }
 
+    // Draw the path segments
     for (node, next) in path.iter().tuple_windows() {
         draw_line_between_nodes(&mut output_image, node, next, 0, 255, 0);
     }
 
-
-    // Load the image from disk
-    /*for (idx, node) in path.iter().enumerate() {
-        if let Some(next) = path.get(idx + 1) {
-            // Draw horizontal
-            if node.1 == next.1 {
-                for i in node.0..=next.0 {
-                    output_image.put_pixel(i as u32, node.1 as u32, Rgb([0, 255, 0]));
-                }
-            }
-
-            // Draw vertical
-            if node.0 == next.0 {
-                for i in node.1..=next.1 {
-                    output_image.put_pixel(node.0 as u32, i as u32, Rgb([0, 255, 0]));
-                }
-            }
-        }
-    }*/
-
     output_image.save("out_reverse_manhattan.png").unwrap();
-
-    let duration = start.elapsed();
-    println!("Time elapsed in A* is: {:?}", duration);
-    println!("Path Length: {}", &path.len());
+    println!("Done!");
 }
