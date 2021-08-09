@@ -45,6 +45,8 @@ use std::time::Instant;
 use crate::MazeBlock::{Open, Wall};
 use itertools::Itertools;
 use std::cmp::{max, min};
+use std::io::{Write};
+use std::process::exit;
 
 // Get the state of a cell given a reference image and coordinates
 fn get_cell_from_image(img: &GrayImage, x: usize, y: usize) -> MazeBlock {
@@ -215,10 +217,12 @@ fn manhattan(pos1: (u16, u16), pos2: (u16, u16)) -> u32 {
     ((pos1.0 as i32 - pos2.0 as i32).abs() + (pos1.1 as i32 - pos2.1 as i32).abs()) as u32
 }
 
-fn get_input_path() -> String {
+fn get_file_path(prompt: &str) -> String {
     // Get the input file name
     let mut input_path = String::new();
-    println!("Enter input file name: ");
+    print!("{}", prompt);
+    std::io::stdout().flush().expect("Error flushing stdout.");
+
     let _ = std::io::stdin().read_line(&mut input_path).unwrap();
 
     // Strip newline that wont go away with .trim()
@@ -290,7 +294,10 @@ fn draw_line_between_nodes(img: &mut RgbImage, node: &(u16, u16), next: &(u16, u
 
 fn main() {
     // Get the input path
-    let input_path = get_input_path();
+    let input_path = get_file_path("Enter image input name: ");
+
+    // Get the output path
+    let output_path = get_file_path("Enter image output name: ");
 
     // Load the image from disk
     let source_img = ImageReader::open(&input_path).unwrap().decode().unwrap().into_luma8();
@@ -404,6 +411,6 @@ fn main() {
         draw_line_between_nodes(&mut output_image, node, next, 0, 255, 0);
     }
 
-    output_image.save("500out.png").unwrap();
+    output_image.save(output_path).unwrap();
     println!("Done!");
 }
