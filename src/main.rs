@@ -404,6 +404,6 @@ fn main() {
         draw_line_between_nodes(&mut output_image, node, next, 0, 255, 0);
     }
 
-    output_image.save("out_reverse_manhattan.png").unwrap();
+    output_image.save("500out.png").unwrap();
     println!("Done!");
 }
