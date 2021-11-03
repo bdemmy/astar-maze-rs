@@ -229,6 +229,7 @@ fn get_file_path(prompt: &str) -> String {
     if input_path.ends_with("\n") {
         input_path.truncate(input_path.len() - 1);
     }
+    input_path = input_path.trim().to_string();
 
     input_path
 }
@@ -293,11 +294,16 @@ fn draw_line_between_nodes(img: &mut RgbImage, node: &(u16, u16), next: &(u16, u
 }
 
 fn main() {
+    println!("Current working dir: {}", std::env::current_dir().unwrap().display());
+
     // Get the input path
     let input_path = get_file_path("Enter image input name: ");
 
     // Get the output path
     let output_path = get_file_path("Enter image output name: ");
+
+    println!("Input name: {}\nOutput name: {}", input_path, output_path);
+    println!("Input name length: {}", input_path.len());
 
     // Load the image from disk
     let source_img = ImageReader::open(&input_path).unwrap().decode().unwrap().into_luma8();
