@@ -38,7 +38,7 @@ enum MazeBlock {
 }
 
 use image::io::Reader as ImageReader;
-use image::{GrayImage, Rgb, RgbImage};
+use image::{GrayImage, Luma, Rgb, RgbImage};
 use std::collections::{HashSet, HashMap};
 use priority_queue::PriorityQueue;
 use std::time::Instant;
@@ -46,7 +46,6 @@ use crate::MazeBlock::{Open, Wall};
 use itertools::Itertools;
 use std::cmp::{max, min};
 use std::io::{Write};
-use std::process::exit;
 
 // Get the state of a cell given a reference image and coordinates
 fn get_cell_from_image(img: &GrayImage, x: usize, y: usize) -> MazeBlock {
@@ -87,7 +86,7 @@ fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8,
             break;
         }
 
-        if get_cell_from_image(img, x - offset, y + 1) == Open || get_cell_from_image(img, x - offset, y - 1) == Open {
+        if get_cell_from_image(img, x - offset, y + 1) == Open || (y > 0 && get_cell_from_image(img, x - offset, y - 1) == Open) {
             left = offset as u8;
             break;
         }
@@ -101,7 +100,7 @@ fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8,
             break;
         }
 
-        if get_cell_from_image(img, x + offset, y + 1) == Open || get_cell_from_image(img, x + offset, y - 1) == Open {
+        if get_cell_from_image(img, x + offset, y + 1) == Open || (y > 0 && get_cell_from_image(img, x + offset, y - 1) == Open) {
             right = offset as u8;
             break;
         }
@@ -116,7 +115,7 @@ fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8,
         }
 
         // Check right and left
-        if get_cell_from_image(img, x + 1, y - offset) == Open || get_cell_from_image(img, x - 1, y - offset) == Open {
+        if get_cell_from_image(img, x + 1, y - offset) == Open || (x > 0 && get_cell_from_image(img, x - 1, y - offset) == Open) {
             top = offset as u8;
             break;
         }
@@ -131,7 +130,7 @@ fn get_neighbors_from_image(img: &GrayImage, x: usize, y: usize) -> (u8, u8, u8,
         }
 
         // Check right and left
-        if get_cell_from_image(img, x + 1, y + offset) == Open || get_cell_from_image(img, x - 1, y + offset) == Open {
+        if get_cell_from_image(img, x + 1, y + offset) == Open || (x > 0 && get_cell_from_image(img, x - 1, y + offset) == Open) {
             bottom = offset as u8;
             break;
         }
@@ -306,7 +305,29 @@ fn main() {
     println!("Input name length: {}", input_path.len());
 
     // Load the image from disk
-    let source_img = ImageReader::open(&input_path).unwrap().decode().unwrap().into_luma8();
+    let mut source_img = ImageReader::open(&input_path).unwrap().decode().unwrap().into_luma8();
+
+    // Check if the image should be inverted
+    if source_img.width() > 3 && source_img.height() > 0 {
+        let first = source_img.get_pixel(0, 0);
+        let second = source_img.get_pixel(1, 0);
+        let third = source_img.get_pixel(2, 0);
+
+        let avg = (first.0[0] as f64  + second.0[0] as f64  + third.0[0] as f64 ) / 3.0;
+
+        // The border is white, we need to invert
+        if avg > 128.0 {
+            for x in 0usize..source_img.width() as usize {
+                for y in 0usize..source_img.height() as usize {
+                    let mut luma = source_img.get_pixel(x as u32, y as u32).0[0];
+                    luma = 255 - luma;
+                    source_img.put_pixel(x as u32, y as u32, Luma([luma]));
+                }
+            }
+
+            source_img.save(&input_path).expect("Unable to save inverted input file..");
+        }
+    }
 
     // Get the cell count
     let num_cells_h = source_img.width() as usize;
